@@ -1,11 +1,14 @@
 import './App.css';
-import SignIn from './authentication/signin';
+import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 
 function App() {
   return (
-    <div className="App">
-      <SignIn />
-    </div>
+    <Router>
+      <div className="App">
+        <Routes>
+        </Routes>
+      </div>
+    </Router>
   );
 }
 
