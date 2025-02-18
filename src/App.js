@@ -1,13 +1,10 @@
-import { useEffect } from 'react';
 import './App.css';
+import SignIn from './authentication/signin';
 
 function App() {
-  useEffect(() => {
-    window.location.href = "https://beaconator.com";
-  }, []);
-
   return (
     <div className="App">
+      <SignIn />
     </div>
   );
 }
