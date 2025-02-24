@@ -1,6 +1,7 @@
+/* global chrome */
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MenuIcon, X, Settings, LogOut, User } from 'lucide-react';
+import { MenuIcon, X, Settings, LogOut, User, Power } from 'lucide-react';
 
 const styles = {
   container: {
@@ -165,14 +166,65 @@ const styles = {
     paddingTop: '64px',
     height: 'calc(100vh - 64px)',
     position: 'relative'
+  },
+  toggleButton: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: '8px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'all 0.3s ease',
+    color: '#FF7A00',
+    borderRadius: '8px',
+    marginRight: '12px',
+    '&:hover': {
+      background: 'rgba(255, 122, 0, 0.1)'
+    }
+  },
+  toggleButtonActive: {
+    color: '#4CAF50',
+    '&:hover': {
+      background: 'rgba(76, 175, 80, 0.1)'
+    }
+  },
+  rightSection: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
   }
 };
 
 const Dashboard = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isScrapingEnabled, setIsScrapingEnabled] = useState(false);
   const profileRef = useRef(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    // Load initial scraping state from chrome storage
+    console.log('Loading initial scraping state...');
+    try {
+      if (!chrome || !chrome.storage || !chrome.storage.local) {
+        console.error('Chrome storage API not available during initialization');
+        return;
+      }
+
+      chrome.storage.local.get(['isScrapingEnabled'], (result) => {
+        if (chrome.runtime.lastError) {
+          console.error('Error loading initial scraping state:', chrome.runtime.lastError);
+          return;
+        }
+        const initialState = result.isScrapingEnabled || false;
+        console.log('Loaded initial scraping state:', initialState);
+        setIsScrapingEnabled(initialState);
+      });
+    } catch (error) {
+      console.error('Error in initialization:', error);
+    }
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -205,6 +257,42 @@ const Dashboard = () => {
     console.log('Navigate to settings');
   };
 
+  const toggleScraping = () => {
+    const newState = !isScrapingEnabled;
+    setIsScrapingEnabled(newState);
+    console.log('Attempting to toggle scraping to:', newState);
+    
+    try {
+      if (!chrome || !chrome.storage || !chrome.storage.local) {
+        console.error('Chrome storage API not available');
+        return;
+      }
+
+      // Save to chrome storage
+      chrome.storage.local.set({ isScrapingEnabled: newState }, () => {
+        if (chrome.runtime.lastError) {
+          console.error('Error saving scraping state:', chrome.runtime.lastError);
+          return;
+        }
+        console.log('Scraping state saved:', newState);
+      });
+
+      // Broadcast the change to other parts of the extension
+      chrome.runtime.sendMessage({
+        type: 'TOGGLE_SCRAPING',
+        enabled: newState
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error('Error broadcasting scraping state:', chrome.runtime.lastError);
+          return;
+        }
+        console.log('Successfully broadcast scraping state:', newState);
+      });
+    } catch (error) {
+      console.error('Error in toggleScraping:', error);
+    }
+  };
+
   return (
     <div style={styles.container}>
       {/* App Bar */}
@@ -216,36 +304,50 @@ const Dashboard = () => {
           <MenuIcon size={24} strokeWidth={2} />
         </button>
 
-        {/* Profile Section */}
-        <div style={styles.profileSection} ref={profileRef}>
-          <button 
-            style={styles.profileButton}
-            onClick={toggleProfileMenu}
+        {/* Right Section with Toggle and Profile */}
+        <div style={styles.rightSection}>
+          <button
+            style={{
+              ...styles.toggleButton,
+              ...(isScrapingEnabled && styles.toggleButtonActive)
+            }}
+            onClick={toggleScraping}
+            title={isScrapingEnabled ? 'Disable Scraping' : 'Enable Scraping'}
           >
-            <User size={20} strokeWidth={2} />
+            <Power size={24} strokeWidth={2} />
           </button>
 
-          {/* Profile Dropdown Menu */}
-          <div 
-            style={{
-              ...styles.dropdownMenu,
-              ...(isProfileMenuOpen && styles.dropdownMenuVisible)
-            }}
-          >
-            <div 
-              style={styles.dropdownItem}
-              onClick={handleSettings}
+          {/* Profile Section */}
+          <div style={styles.profileSection} ref={profileRef}>
+            <button 
+              style={styles.profileButton}
+              onClick={toggleProfileMenu}
             >
-              <Settings style={styles.dropdownIcon} size={20} />
-              Settings
-            </div>
-            <div style={styles.dropdownDivider} />
+              <User size={20} strokeWidth={2} />
+            </button>
+
+            {/* Profile Dropdown Menu */}
             <div 
-              style={styles.dropdownItem}
-              onClick={handleLogout}
+              style={{
+                ...styles.dropdownMenu,
+                ...(isProfileMenuOpen && styles.dropdownMenuVisible)
+              }}
             >
-              <LogOut style={styles.dropdownIcon} size={20} />
-              Logout
+              <div 
+                style={styles.dropdownItem}
+                onClick={handleSettings}
+              >
+                <Settings style={styles.dropdownIcon} size={20} />
+                Settings
+              </div>
+              <div style={styles.dropdownDivider} />
+              <div 
+                style={styles.dropdownItem}
+                onClick={handleLogout}
+              >
+                <LogOut style={styles.dropdownIcon} size={20} />
+                Logout
+              </div>
             </div>
           </div>
         </div>
