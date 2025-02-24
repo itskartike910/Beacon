@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MenuIcon, X, Settings, LogOut, User, Power } from 'lucide-react';
+import TwitterControl from './Twitter/TwitterControl';
 
 const styles = {
   container: {
@@ -75,13 +76,13 @@ const styles = {
     right: 0,
     background: '#000055FF',
     borderRadius: '8px',
-    width: '200px',
+    width: '150px',
     boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
     opacity: 0,
     visibility: 'hidden',
     transform: 'translateY(-10px)',
     transition: 'all 0.3s ease',
-    border: '1px solid rgba(255, 122, 0, 0.2)'
+    border: '1px solid #9C6300A2'
   },
   dropdownMenuVisible: {
     opacity: 1,
@@ -199,31 +200,72 @@ const styles = {
 const Dashboard = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  const [isScrapingEnabled, setIsScrapingEnabled] = useState(false);
+  const [profileData, setProfileData] = useState(null);
+  const [scrapingStatus, setScrapingStatus] = useState({
+    hasScrapedProfile: false,
+    hasScrapedLikes: false,
+    hasScrapedFollowing: false,
+    hasScrapedReplies: false,
+    isProfileScraping: false,
+    isLikedTweetsScraping: false,
+  });
+  
+  // Get all scraping states from TwitterControl
+  const {
+    isFollowingEnabled,
+    setIsFollowingEnabled,
+    isProfileScrapingEnabled,
+    setIsProfileScrapingEnabled,
+    isLikedTweetsScrapingEnabled,
+    setIsLikedTweetsScrapingEnabled,
+    isBackgroundTweetScrapingEnabled,
+    setIsBackgroundTweetScrapingEnabled,
+    isRepliesScraping,
+    setIsRepliesScraping,
+    isMainScrapingEnabled,
+    setIsMainScrapingEnabled
+  } = TwitterControl.useScrapingStates();
+
   const profileRef = useRef(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Load initial scraping state from chrome storage
-    console.log('Loading initial scraping state...');
-    try {
-      if (!chrome || !chrome.storage || !chrome.storage.local) {
-        console.error('Chrome storage API not available during initialization');
-        return;
-      }
+    // Initialize all scraping states
+    TwitterControl.initializeScrapingStates({
+      setIsMainScrapingEnabled,
+      setIsBackgroundTweetScrapingEnabled,
+      setIsFollowingEnabled,
+      setIsRepliesScraping,
+      setIsProfileScrapingEnabled,
+      setIsLikedTweetsScrapingEnabled
+    });
 
-      chrome.storage.local.get(['isScrapingEnabled'], (result) => {
-        if (chrome.runtime.lastError) {
-          console.error('Error loading initial scraping state:', chrome.runtime.lastError);
-          return;
-        }
-        const initialState = result.isScrapingEnabled || false;
-        console.log('Loaded initial scraping state:', initialState);
-        setIsScrapingEnabled(initialState);
-      });
-    } catch (error) {
-      console.error('Error in initialization:', error);
-    }
+    // Load profile data
+    chrome.storage.local.get(['profileData'], (result) => {
+      if (result.profileData) {
+        setProfileData(result.profileData);
+      }
+    });
+
+    // Setup storage and message listeners
+    const removeStorageListener = TwitterControl.setupStorageListeners({
+      setIsMainScrapingEnabled,
+      setIsBackgroundTweetScrapingEnabled,
+      setIsFollowingEnabled,
+      setIsRepliesScraping,
+      setIsProfileScrapingEnabled,
+      setIsLikedTweetsScrapingEnabled
+    });
+
+    const removeMessageListener = TwitterControl.setupMessageListeners({
+      setIsBackgroundTweetScrapingEnabled
+    });
+
+    // Cleanup listeners on unmount
+    return () => {
+      removeStorageListener();
+      removeMessageListener();
+    };
   }, []);
 
   useEffect(() => {
@@ -248,48 +290,162 @@ const Dashboard = () => {
   };
 
   const handleLogout = () => {
-    // Handle logout logic here
-    navigate('/SignIn');
+    chrome.storage.local.remove(['userAuth', 'authToken', 'userId', 'userEmail'], () => {
+      navigate('/SignIn');
+    });
   };
 
   const handleSettings = () => {
-    // Handle settings navigation here
     console.log('Navigate to settings');
   };
 
-  const toggleScraping = () => {
-    const newState = !isScrapingEnabled;
-    setIsScrapingEnabled(newState);
-    console.log('Attempting to toggle scraping to:', newState);
+  const toggleScraping = async () => {
+    const newState = !isMainScrapingEnabled;
+    console.log('🔄 Toggling main scraping to:', newState);
     
     try {
-      if (!chrome || !chrome.storage || !chrome.storage.local) {
-        console.error('Chrome storage API not available');
+      if (!chrome?.storage?.local) {
+        console.error('❌ Chrome storage API not available');
         return;
       }
 
-      // Save to chrome storage
-      chrome.storage.local.set({ isScrapingEnabled: newState }, () => {
-        if (chrome.runtime.lastError) {
-          console.error('Error saving scraping state:', chrome.runtime.lastError);
-          return;
-        }
-        console.log('Scraping state saved:', newState);
-      });
+      if (newState) {
+        // First, enable main scraping and wait for it to complete
+        await new Promise((resolve) => {
+          chrome.storage.local.set({ isMainScrapingEnabled: true }, resolve);
+        });
+        setIsMainScrapingEnabled(true);
+        console.log('✅ Main scraping enabled');
 
-      // Broadcast the change to other parts of the extension
-      chrome.runtime.sendMessage({
-        type: 'TOGGLE_SCRAPING',
-        enabled: newState
-      }, (response) => {
-        if (chrome.runtime.lastError) {
-          console.error('Error broadcasting scraping state:', chrome.runtime.lastError);
+        // Get username before proceeding
+        const storage = await new Promise((resolve) => {
+          chrome.storage.local.get(['initialUsername'], resolve);
+        });
+
+        if (!storage.initialUsername) {
+          console.log('⚠️ No username found, opening Twitter for auth...');
+          chrome.tabs.create({ url: "https://x.com", active: false });
           return;
         }
-        console.log('Successfully broadcast scraping state:', newState);
-      });
+
+        console.log('👤 Starting scraping for:', storage.initialUsername);
+
+        // Enable all scraping features in sequence
+        const scrapingSequence = [
+          {
+            name: 'Profile',
+            action: () => TwitterControl.toggleProfileScraping(
+              isProfileScrapingEnabled,
+              setIsProfileScrapingEnabled,
+              setScrapingStatus
+            )
+          },
+          {
+            name: 'Liked Tweets',
+            action: () => TwitterControl.toggleLikedTweetsScraping(
+              isLikedTweetsScrapingEnabled,
+              setIsLikedTweetsScrapingEnabled,
+              setScrapingStatus
+            )
+          },
+          {
+            name: 'Background Tweets',
+            action: () => TwitterControl.toggleBackgroundTweetScraping(
+              isBackgroundTweetScrapingEnabled,
+              setIsBackgroundTweetScrapingEnabled,
+              profileData
+            )
+          },
+          {
+            name: 'Following',
+            action: () => TwitterControl.toggleFollowing(
+              isFollowingEnabled,
+              setIsFollowingEnabled
+            )
+          },
+          {
+            name: 'Replies',
+            action: () => TwitterControl.handleRepliesScraping(
+              isRepliesScraping,
+              setIsRepliesScraping
+            )
+          }
+        ];
+
+        // Execute scraping sequence with delays
+        for (const scraper of scrapingSequence) {
+          console.log(`🔄 Starting ${scraper.name} scraping...`);
+          await scraper.action();
+          await new Promise(resolve => setTimeout(resolve, 1000)); // 1s delay between each
+        }
+
+        console.log('✅ All scraping features enabled');
+
+      } else {
+        // Disable all scraping at once
+        console.log('🛑 Stopping all scraping...');
+        
+        // Send stop message first
+        chrome.runtime.sendMessage({ type: 'STOP_ALL_SCRAPING' });
+        
+        // Reset all states atomically
+        const newStates = {
+          isMainScrapingEnabled: false,
+          isBackgroundTweetScrapingEnabled: false,
+          isFollowingEnabled: false,
+          isRepliesScrapingEnabled: false,
+          isProfileScrapingEnabled: false,
+          isLikedTweetsScrapingEnabled: false,
+          hasScrapedProfile: false,
+          hasScrapedLikes: false,
+          hasScrapedFollowing: false,
+          hasScrapedReplies: false,
+        };
+
+        // Update chrome storage
+        await new Promise((resolve) => {
+          chrome.storage.local.set(newStates, resolve);
+        });
+
+        // Update React states
+        setIsMainScrapingEnabled(false);
+        setIsBackgroundTweetScrapingEnabled(false);
+        setIsFollowingEnabled(false);
+        setIsRepliesScraping(false);
+        setIsProfileScrapingEnabled(false);
+        setIsLikedTweetsScrapingEnabled(false);
+
+        // Update scraping status
+        setScrapingStatus({
+          hasScrapedProfile: false,
+          hasScrapedLikes: false,
+          hasScrapedFollowing: false,
+          hasScrapedReplies: false,
+          isProfileScraping: false,
+          isLikedTweetsScraping: false,
+        });
+
+        console.log('✅ All scraping features disabled');
+      }
     } catch (error) {
-      console.error('Error in toggleScraping:', error);
+      console.error('❌ Error in toggleScraping:', error);
+      
+      // Reset all states on error
+      setIsMainScrapingEnabled(false);
+      setIsBackgroundTweetScrapingEnabled(false);
+      setIsFollowingEnabled(false);
+      setIsRepliesScraping(false);
+      setIsProfileScrapingEnabled(false);
+      setIsLikedTweetsScrapingEnabled(false);
+      
+      chrome.storage.local.set({
+        isMainScrapingEnabled: false,
+        isBackgroundTweetScrapingEnabled: false,
+        isFollowingEnabled: false,
+        isRepliesScrapingEnabled: false,
+        isProfileScrapingEnabled: false,
+        isLikedTweetsScrapingEnabled: false,
+      });
     }
   };
 
@@ -309,10 +465,10 @@ const Dashboard = () => {
           <button
             style={{
               ...styles.toggleButton,
-              ...(isScrapingEnabled && styles.toggleButtonActive)
+              ...(isMainScrapingEnabled && styles.toggleButtonActive)
             }}
             onClick={toggleScraping}
-            title={isScrapingEnabled ? 'Disable Scraping' : 'Enable Scraping'}
+            title={isMainScrapingEnabled ? 'Disable Scraping' : 'Enable Scraping'}
           >
             <Power size={24} strokeWidth={2} />
           </button>
