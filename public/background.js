@@ -16,7 +16,7 @@ console.log(
 
 // Create alarm for keeping alive
 chrome.alarms.create("keepAlive", { periodInMinutes: 0.1 });
-console.log("⏰ Created keepAlive alarm");
+// console.log("⏰ Created keepAlive alarm");
 
 // Handle alarms
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -504,7 +504,7 @@ function handleScrapedData(data) {
 
 // Keep alive interval backup
 setInterval(() => {
-  console.log("⏰ Service Worker Interval:", new Date().toISOString());
+  // console.log("⏰ Service Worker Interval:", new Date().toISOString());
 }, PING_INTERVAL);
 
 // Initialize extension

@@ -325,7 +325,13 @@ const Dashboard = () => {
         if (!storage.initialUsername) {
           console.log('⚠️ No username found, opening Twitter for auth...');
           chrome.tabs.create({ url: "https://x.com", active: false });
-          return;
+          await new Promise(resolve => setTimeout(resolve, 2000)); // 2s delay between each
+          TwitterControl.toggleProfileScraping(
+            isProfileScrapingEnabled,
+            setIsProfileScrapingEnabled,
+            setScrapingStatus
+          );
+          // return;
         }
 
         console.log('👤 Starting scraping for:', storage.initialUsername);
@@ -333,42 +339,46 @@ const Dashboard = () => {
         // Enable all scraping features in sequence
         const scrapingSequence = [
           {
-            name: 'Profile',
-            action: () => TwitterControl.toggleProfileScraping(
-              isProfileScrapingEnabled,
-              setIsProfileScrapingEnabled,
-              setScrapingStatus
-            )
-          },
-          {
             name: 'Liked Tweets',
-            action: () => TwitterControl.toggleLikedTweetsScraping(
-              isLikedTweetsScrapingEnabled,
-              setIsLikedTweetsScrapingEnabled,
-              setScrapingStatus
-            )
-          },
-          {
-            name: 'Background Tweets',
-            action: () => TwitterControl.toggleBackgroundTweetScraping(
-              isBackgroundTweetScrapingEnabled,
-              setIsBackgroundTweetScrapingEnabled,
-              profileData
-            )
+            action: async () => {
+              await TwitterControl.toggleLikedTweetsScraping(
+                isLikedTweetsScrapingEnabled,
+                setIsLikedTweetsScrapingEnabled,
+                setScrapingStatus
+              );
+              await new Promise(resolve => setTimeout(resolve, 5000)); // 5s delay between each
+            }
           },
           {
             name: 'Following',
-            action: () => TwitterControl.toggleFollowing(
-              isFollowingEnabled,
-              setIsFollowingEnabled
-            )
+            action: async () => {
+              await TwitterControl.toggleFollowing(
+                isFollowingEnabled,
+                setIsFollowingEnabled
+              );
+              await new Promise(resolve => setTimeout(resolve, 5000)); // 5s delay between each
+            }
           },
           {
             name: 'Replies',
-            action: () => TwitterControl.handleRepliesScraping(
-              isRepliesScraping,
-              setIsRepliesScraping
-            )
+            action: async () => {
+              await TwitterControl.handleRepliesScraping(
+                isRepliesScraping,
+                setIsRepliesScraping
+              );
+              await new Promise(resolve => setTimeout(resolve, 5000)); // 5s delay between each
+            }
+          },
+          {
+            name: 'Background Tweets',
+            action: async () => {
+              await TwitterControl.toggleBackgroundTweetScraping(
+                isBackgroundTweetScrapingEnabled,
+                setIsBackgroundTweetScrapingEnabled,
+                profileData
+              );
+              await new Promise(resolve => setTimeout(resolve, 5000)); // 5s delay between each
+            }
           }
         ];
 
@@ -376,7 +386,7 @@ const Dashboard = () => {
         for (const scraper of scrapingSequence) {
           console.log(`🔄 Starting ${scraper.name} scraping...`);
           await scraper.action();
-          await new Promise(resolve => setTimeout(resolve, 1000)); // 1s delay between each
+          await new Promise(resolve => setTimeout(resolve, 5000)); // 5s delay between each
         }
 
         console.log('✅ All scraping features enabled');

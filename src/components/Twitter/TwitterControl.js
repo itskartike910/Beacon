@@ -28,29 +28,29 @@ export const useScrapingStates = () => {
 
 // Toggle Following Scraping
 export const toggleFollowing = (isFollowingEnabled, setIsFollowingEnabled) => {
-  const newState = !isFollowingEnabled;
-  setIsFollowingEnabled(newState);
+    const newState = !isFollowingEnabled;
+    setIsFollowingEnabled(newState);
 
-  if (newState) {
-    chrome.storage.local.get(["initialUsername"], (result) => {
-      if (result.initialUsername) {
+    if (newState) {
+      chrome.storage.local.get(["initialUsername"], (result) => {
+        if (result.initialUsername) {
         console.log("🔄 Requesting following scrape for:", result.initialUsername);
-        chrome.runtime.sendMessage({
-          type: "START_FOLLOWING_SCRAPE",
-          username: result.initialUsername,
-          enabled: newState,
-        });
-      } else {
-        console.error("No username found for following scrape");
-        setIsFollowingEnabled(false);
-      }
-    });
-  }
+          chrome.runtime.sendMessage({
+            type: "START_FOLLOWING_SCRAPE",
+            username: result.initialUsername,
+            enabled: newState,
+          });
+        } else {
+          console.error("No username found for following scrape");
+          setIsFollowingEnabled(false);
+        }
+      });
+    }
 
-  chrome.storage.local.set({
-    isFollowingEnabled: newState,
-  });
-};
+    chrome.storage.local.set({
+      isFollowingEnabled: newState,
+    });
+  };
 
 // Toggle Background Tweet Scraping
 export const toggleBackgroundTweetScraping = (
